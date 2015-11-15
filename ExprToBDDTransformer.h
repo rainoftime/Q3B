@@ -49,14 +49,15 @@ class ExprToBDDTransformer
     void loadVars();    
     
     void loadBDDsFromExpr(z3::expr);
-    bdd getBDDFromExpr(const z3::expr&, std::vector<boundVar>);
-    bvec getBvecFromExpr(const z3::expr&, std::vector<boundVar>);
+    bdd getBDDFromExpr(const z3::expr&, std::vector<boundVar>, bdd mustSatisfy = bdd_true(), bdd alreadySatisfies = bdd_false());
+    bvec getBvecFromExpr(const z3::expr&, std::vector<boundVar>, bdd mustSatisfy = bdd_true(), bdd alreadySatisfies = bdd_false());
 
     unsigned int getNumeralValue(const z3::expr&);
     bvec getNumeralBvec(const z3::expr&);
+    bvec getVariableBvec(const std::string&, bdd, bdd);
 
-    bdd getConjunctionBdd(const std::vector<z3::expr>&, const std::vector<boundVar>&);
-    bdd getDisjunctionBdd(const std::vector<z3::expr>&, const std::vector<boundVar>&);
+    bdd getConjunctionBdd(const std::vector<z3::expr>&, const std::vector<boundVar>&, bdd mustSatisfy = bdd_true(), bdd alreadySatisfies = bdd_false());
+    bdd getDisjunctionBdd(const std::vector<z3::expr>&, const std::vector<boundVar>&, bdd mustSatisfy = bdd_true(), bdd alreadySatisfies = bdd_false());
 
     int exisentialBitWidth;
     int universalBitWidth;

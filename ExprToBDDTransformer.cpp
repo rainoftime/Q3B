@@ -234,13 +234,13 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : expre
     m_bdd = getBDDFromExpr(e, vector<boundVar>());
   }
 
-  bdd ExprToBDDTransformer::getConjunctionBdd(const vector<expr> &arguments, const vector<boundVar> &boundVars)
+  bdd ExprToBDDTransformer::getConjunctionBdd(const vector<expr> &arguments, const vector<boundVar> &boundVars, bdd mustSatisfy, bdd alreadySatisfies)
   {
-      vector<bdd> results;
+      bdd result = getBDDFromExpr(arguments[0], boundVars, mustSatisfy, alreadySatisfies);
 
-      for (unsigned int i = 0; i < arguments.size(); i++)
+      for (unsigned int i = 1; i < arguments.size(); i++)
       {
-        bdd argBdd = getBDDFromExpr(arguments[i], boundVars);
+        bdd argBdd = getBDDFromExpr(arguments[i], boundVars, bdd_and(result, mustSatisfy), alreadySatisfies);
 
         if (argBdd.id() == 0)
         {
@@ -248,100 +248,45 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : expre
         }
         else
         {
-            results.push_back(argBdd);
-            if (DEBUG)
+            result = bdd_and(result, argBdd);
+
+            if (result.id() == 0)
             {
-                cout << bdd_nodecount(argBdd) << endl;
+                return bdd_false();
             }
-        }
+        }        
       }
 
-      if (results.size() == 0)
-      {
-          return bdd_true();
-      }
-      else
-      {
-          std::sort(results.begin(), results.end(),
-              [](const bdd& a, const bdd& b) -> bool
-          {
-              return bdd_nodecount(a) < bdd_nodecount(b);
-          });
-
-          bdd toReturn = results.at(0);
-
-          for (unsigned int i = 1; i < results.size(); i++)
-          {
-              toReturn = bdd_and(toReturn, results.at(i));
-
-              if (bdd_nodecount(toReturn) == 0)
-              {
-                  if (toReturn.id() == 0)
-                  {
-                    return bdd_false();
-                  }
-              }
-          }
-
-          return toReturn;
-      }
+      return result;
   }
 
-  bdd ExprToBDDTransformer::getDisjunctionBdd(const vector<expr> &arguments, const vector<boundVar> &boundVars)
+  bdd ExprToBDDTransformer::getDisjunctionBdd(const vector<expr> &arguments, const vector<boundVar> &boundVars, bdd mustSatisfy, bdd alreadySatisfies)
   {
-      vector<bdd> results;
+      bdd result = getBDDFromExpr(arguments[0], boundVars, mustSatisfy, alreadySatisfies);
 
-      for (unsigned int i = 0; i < arguments.size(); i++)
+      for (unsigned int i = 1; i < arguments.size(); i++)
       {
-        bdd argBdd = getBDDFromExpr(arguments[i], boundVars);
+        bdd argBdd = getBDDFromExpr(arguments[i], boundVars, mustSatisfy, bdd_or(result, alreadySatisfies));
 
-        if (argBdd.id() == 1)
+        if (argBdd.id() != 0)
         {
             return bdd_true();
         }
         else
         {
-            results.push_back(argBdd);
+            result = bdd_or(result, argBdd);
 
-            if (DEBUG)
+            if (result.id() != 0)
             {
-                cout << bdd_nodecount(argBdd) << endl;
+                return bdd_true();
             }
         }
       }
 
-      if (results.size() == 0)
-      {
-          return bdd_false();
-      }
-      else
-      {
-          std::sort(results.begin(), results.end(),
-              [](const bdd& a, const bdd& b) -> bool
-          {
-              return bdd_nodecount(a) > bdd_nodecount(b);
-          });
-
-          bdd toReturn = results.at(0);
-
-          for (unsigned int i = 1; i < results.size(); i++)
-          {
-              toReturn = bdd_or(toReturn, results.at(i));
-
-              if (bdd_nodecount(toReturn) == 0)
-              {
-                  if (toReturn.id() == 1)
-                  {
-                    return bdd_true();
-                  }
-              }
-          }
-
-          return toReturn;
-      }
+      return result;
   }
 
-  bdd ExprToBDDTransformer::getBDDFromExpr(const expr &e, vector<boundVar> boundVars)
+  bdd ExprToBDDTransformer::getBDDFromExpr(const expr &e, vector<boundVar> boundVars, bdd mustSatisfy, bdd alreadySatisfies)
   {    
     assert(e.is_bool());
     //cout << e << endl;
@@ -411,14 +356,14 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : expre
         assert(sort.is_bv() || sort.is_bool());
         if (sort.is_bv())
         {
-            auto arg0 = getBvecFromExpr(e.arg(0), boundVars);
-            auto arg1 = getBvecFromExpr(e.arg(1), boundVars);
+            auto arg0 = getBvecFromExpr(e.arg(0), boundVars, mustSatisfy, alreadySatisfies);
+            auto arg1 = getBvecFromExpr(e.arg(1), boundVars, mustSatisfy, alreadySatisfies);
             result = bvec_equ(arg0, arg1);
         }
         else if (sort.is_bool())
         {
-            auto arg0 = getBDDFromExpr(e.arg(0), boundVars);
-            auto arg1 = getBDDFromExpr(e.arg(1), boundVars);
+            auto arg0 = getBDDFromExpr(e.arg(0), boundVars, mustSatisfy, alreadySatisfies);
+            auto arg1 = getBDDFromExpr(e.arg(1), boundVars, mustSatisfy, alreadySatisfies);
             result = bdd_biimp(arg0, arg1);
         }
 
@@ -426,7 +371,7 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : expre
       }
       else if (functionName == "not")
       {                        
-        auto arg0 = getBDDFromExpr(e.arg(0), boundVars);
+        auto arg0 = getBDDFromExpr(e.arg(0), boundVars, mustSatisfy, alreadySatisfies);
         bdd result = bdd_not(arg0);
 
         return result;
@@ -438,7 +383,7 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : expre
         {
             arguments.push_back(e.arg(i));
         }
-        bdd result = getConjunctionBdd(arguments, boundVars);
+        bdd result = getConjunctionBdd(arguments, boundVars, mustSatisfy, alreadySatisfies);
         bddExprCache.insert({(Z3_ast)e, {result, boundVars}});
         return result;
       }
@@ -449,14 +394,14 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : expre
           {
               arguments.push_back(e.arg(i));
           }
-          bdd result = getDisjunctionBdd(arguments, boundVars);
+          bdd result = getDisjunctionBdd(arguments, boundVars, mustSatisfy, alreadySatisfies);
           bddExprCache.insert({(Z3_ast)e, {result, boundVars}});
           return result;
       }
       else if (functionName == "=>")
       {
-        auto arg0 = getBDDFromExpr(e.arg(0), boundVars);
-        auto arg1 = getBDDFromExpr(e.arg(1), boundVars);
+        auto arg0 = getBDDFromExpr(e.arg(0), boundVars, mustSatisfy, alreadySatisfies);
+        auto arg1 = getBDDFromExpr(e.arg(1), boundVars, mustSatisfy, alreadySatisfies);
         bdd result =  bdd_imp(arg0, arg1);
 
         bddExprCache.insert({(Z3_ast)e, {result, boundVars}});
@@ -464,8 +409,8 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : expre
       }
       else if (functionName == "bvule")
       {
-        auto arg0 = getBvecFromExpr(e.arg(0), boundVars);
-        auto arg1 = getBvecFromExpr(e.arg(1), boundVars);
+        auto arg0 = getBvecFromExpr(e.arg(0), boundVars, mustSatisfy, alreadySatisfies);
+        auto arg1 = getBvecFromExpr(e.arg(1), boundVars, mustSatisfy, alreadySatisfies);
         bdd result = bvec_lte(arg0, arg1);
 
         bddExprCache.insert({(Z3_ast)e, {result, boundVars}});
@@ -473,8 +418,8 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : expre
       }
       else if (functionName == "bvult")
       {
-        auto arg0 = getBvecFromExpr(e.arg(0), boundVars);
-        auto arg1 = getBvecFromExpr(e.arg(1), boundVars);
+        auto arg0 = getBvecFromExpr(e.arg(0), boundVars, mustSatisfy, alreadySatisfies);
+        auto arg1 = getBvecFromExpr(e.arg(1), boundVars, mustSatisfy, alreadySatisfies);
         bdd result = bvec_lth(arg0, arg1);
 
         bddExprCache.insert({(Z3_ast)e, {result, boundVars}});
@@ -482,8 +427,8 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : expre
       }
       else if (functionName == "bvugr")
       {
-        auto arg0 = getBvecFromExpr(e.arg(0), boundVars);
-        auto arg1 = getBvecFromExpr(e.arg(1), boundVars);
+        auto arg0 = getBvecFromExpr(e.arg(0), boundVars, mustSatisfy, alreadySatisfies);
+        auto arg1 = getBvecFromExpr(e.arg(1), boundVars, mustSatisfy, alreadySatisfies);
         bdd result = bvec_gte(arg0, arg1);
 
         bddExprCache.insert({(Z3_ast)e, {result, boundVars}});
@@ -491,8 +436,8 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : expre
       }
       else if (functionName == "bvugt")
       {
-        auto arg0 = getBvecFromExpr(e.arg(0), boundVars);
-        auto arg1 = getBvecFromExpr(e.arg(1), boundVars);
+        auto arg0 = getBvecFromExpr(e.arg(0), boundVars, mustSatisfy, alreadySatisfies);
+        auto arg1 = getBvecFromExpr(e.arg(1), boundVars, mustSatisfy, alreadySatisfies);
         bdd result = bvec_gth(arg0, arg1);
 
         bddExprCache.insert({(Z3_ast)e, {result, boundVars}});
@@ -500,8 +445,8 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : expre
       }
       else if (functionName == "bvsle")
       {
-        auto arg0 = getBvecFromExpr(e.arg(0), boundVars);
-        auto arg1 = getBvecFromExpr(e.arg(1), boundVars);
+        auto arg0 = getBvecFromExpr(e.arg(0), boundVars, mustSatisfy, alreadySatisfies);
+        auto arg1 = getBvecFromExpr(e.arg(1), boundVars, mustSatisfy, alreadySatisfies);
 
         int size = e.arg(0).get_sort().bv_size();
 
@@ -522,8 +467,8 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : expre
       }
       else if (functionName == "bvslt")
       {
-        auto arg0 = getBvecFromExpr(e.arg(0), boundVars);
-        auto arg1 = getBvecFromExpr(e.arg(1), boundVars);
+        auto arg0 = getBvecFromExpr(e.arg(0), boundVars, mustSatisfy, alreadySatisfies);
+        auto arg1 = getBvecFromExpr(e.arg(1), boundVars, mustSatisfy, alreadySatisfies);
 
         int size = e.arg(0).get_sort().bv_size();
 
@@ -544,8 +489,8 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : expre
       }
       else if (functionName == "iff")
       {
-        auto arg0 = getBDDFromExpr(e.arg(0), boundVars);
-        auto arg1 = getBDDFromExpr(e.arg(1), boundVars);
+        auto arg0 = getBDDFromExpr(e.arg(0), boundVars, mustSatisfy, alreadySatisfies);
+        auto arg1 = getBDDFromExpr(e.arg(1), boundVars, mustSatisfy, alreadySatisfies);
         bdd result = bdd_biimp(arg0, arg1);
 
         bddExprCache.insert({(Z3_ast)e, {result, boundVars}});
@@ -553,9 +498,9 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : expre
       }
       else if (functionName == "if")
       {
-        auto arg0 = getBDDFromExpr(e.arg(0), boundVars);
-        auto arg1 = getBDDFromExpr(e.arg(1), boundVars);
-        auto arg2 = getBDDFromExpr(e.arg(2), boundVars);
+        auto arg0 = getBDDFromExpr(e.arg(0), boundVars, mustSatisfy, alreadySatisfies);
+        auto arg1 = getBDDFromExpr(e.arg(1), boundVars, mustSatisfy, alreadySatisfies);
+        auto arg2 = getBDDFromExpr(e.arg(2), boundVars, mustSatisfy, alreadySatisfies);
         bdd result = bdd_ite(arg0, arg1, arg2);
 
         bddExprCache.insert({(Z3_ast)e, {result, boundVars}});
@@ -593,7 +538,7 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : expre
       bdd bodyBdd;
       if (!e.body().is_app() || (e.body().decl().decl_kind() != Z3_OP_OR && e.body().decl().decl_kind() != Z3_OP_AND))
       {
-        bodyBdd = getBDDFromExpr(e.body(), boundVars);
+        bodyBdd = getBDDFromExpr(e.body(), boundVars, mustSatisfy, alreadySatisfies);
       }
 
       for (int i = boundVariables - 1; i >= 0; i--)
@@ -623,15 +568,15 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : expre
 
                   if (e.body().decl().decl_kind() == Z3_OP_OR)
                   {
-                    bodyBdd = bdd_appall(getDisjunctionBdd(leftHalf, boundVars),
-                                       getDisjunctionBdd(rightHalf, boundVars),
+                    bodyBdd = bdd_appall(getDisjunctionBdd(leftHalf, boundVars, mustSatisfy, alreadySatisfies),
+                                       getDisjunctionBdd(rightHalf, boundVars, mustSatisfy, alreadySatisfies),
                                        bddop_or,
                                        varSets[current_symbol.str()]);
                   }
                   else
                   {
-                      bodyBdd = bdd_appall(getConjunctionBdd(leftHalf, boundVars),
-                                         getConjunctionBdd(rightHalf, boundVars),
+                      bodyBdd = bdd_appall(getConjunctionBdd(leftHalf, boundVars, mustSatisfy, alreadySatisfies),
+                                         getConjunctionBdd(rightHalf, boundVars, mustSatisfy, alreadySatisfies),
                                          bddop_and,
                                          varSets[current_symbol.str()]);
                   }
@@ -663,15 +608,15 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : expre
 
                   if (e.body().decl().decl_kind() == Z3_OP_OR)
                   {
-                    bodyBdd = bdd_appex(getDisjunctionBdd(leftHalf, boundVars),
-                                       getDisjunctionBdd(rightHalf, boundVars),
+                    bodyBdd = bdd_appex(getDisjunctionBdd(leftHalf, boundVars, mustSatisfy, alreadySatisfies),
+                                       getDisjunctionBdd(rightHalf, boundVars, mustSatisfy, alreadySatisfies),
                                        bddop_or,
                                        varSets[current_symbol.str()]);
                   }
                   else
                   {
-                      bodyBdd = bdd_appex(getConjunctionBdd(leftHalf, boundVars),
-                                         getConjunctionBdd(rightHalf, boundVars),
+                      bodyBdd = bdd_appex(getConjunctionBdd(leftHalf, boundVars, mustSatisfy, alreadySatisfies),
+                                         getConjunctionBdd(rightHalf, boundVars, mustSatisfy, alreadySatisfies),
                                          bddop_and,
                                          varSets[current_symbol.str()]);
                   }
@@ -691,7 +636,7 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : expre
     abort();
   }
 
-  bvec ExprToBDDTransformer::getBvecFromExpr(const expr &e, vector<boundVar> boundVars)
+  bvec ExprToBDDTransformer::getBvecFromExpr(const expr &e, vector<boundVar> boundVars, bdd mustSatisfy, bdd alreadySatisfies)
   {    
     assert(e.is_bv());
     //cout << e << endl;
@@ -733,7 +678,7 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : expre
             if (exisentialBitWidth > 0)
             {
                 int newWidth = min(exisentialBitWidth, bitSize);                
-                bvec var = vars[bVar.first];
+                bvec var = getVariableBvec(bVar.first, mustSatisfy, alreadySatisfies);
 
                 for (int i = newWidth; i < bitSize; i++)
                 {
@@ -752,7 +697,7 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : expre
             else
             {
                 int newWidth = min(-exisentialBitWidth, bitSize);
-                bvec var = vars[bVar.first];
+                bvec var = getVariableBvec(bVar.first, mustSatisfy, alreadySatisfies);
 
                 for (int i = bitSize - newWidth - 1; i >= 0; i--)
                 {
@@ -775,7 +720,7 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : expre
             if (universalBitWidth > 0)
             {
                 int newWidth = min(universalBitWidth, bitSize);
-                bvec var = vars[bVar.first];
+                bvec var = getVariableBvec(bVar.first, mustSatisfy, alreadySatisfies);
 
                 for (int i = newWidth; i < bitSize; i++)
                 {
@@ -794,7 +739,7 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : expre
             else
             {
                 int newWidth = min(-universalBitWidth, bitSize);
-                bvec var = vars[bVar.first];
+                bvec var = getVariableBvec(bVar.first, mustSatisfy, alreadySatisfies);
 
                 for (int i = bitSize - newWidth - 1; i >= 0; i--)
                 {
@@ -813,7 +758,7 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : expre
         }
         else
         {
-            return vars[bVar.first];
+           return getVariableBvec(bVar.first, mustSatisfy, alreadySatisfies);
         }
     }
     else if (e.is_numeral())
@@ -831,7 +776,7 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : expre
           if (exisentialBitWidth > 0)
           {
               int newWidth = min(exisentialBitWidth, bitSize);
-              bvec var = vars[ss.str()];
+              bvec var = getVariableBvec(ss.str(), mustSatisfy, alreadySatisfies);
 
               for (int i = newWidth; i < bitSize; i++)
               {
@@ -850,7 +795,7 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : expre
           else
           {
               int newWidth = min(-exisentialBitWidth, bitSize);
-              bvec var = vars[ss.str()];
+              bvec var = getVariableBvec(ss.str(), mustSatisfy, alreadySatisfies);
 
               for (int i = bitSize - newWidth - 1; i >= 0; i--)
               {
@@ -869,7 +814,7 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : expre
       }
       else
       {
-        return vars[ss.str()];
+        return getVariableBvec(ss.str(), mustSatisfy, alreadySatisfies);
       }
     }
     else if (e.is_app())
@@ -880,10 +825,10 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : expre
       string functionName = f.name().str();
       if (functionName == "bvadd")
       {
-        bvec toReturn = getBvecFromExpr(e.arg(0), boundVars);
+        bvec toReturn = getBvecFromExpr(e.arg(0), boundVars, mustSatisfy, alreadySatisfies);
         for (unsigned int i = 1; i < num; i++)
         {
-          toReturn = bvec_add(toReturn, getBvecFromExpr(e.arg(i), boundVars));
+          toReturn = bvec_add(toReturn, getBvecFromExpr(e.arg(i), boundVars, mustSatisfy, alreadySatisfies));
         }
 
         bvecExprCache.insert({(Z3_ast)e, {toReturn, boundVars}});
@@ -891,8 +836,8 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : expre
       }
       else if (functionName == "bvsub")
       {
-        auto arg0 = getBvecFromExpr(e.arg(0), boundVars);
-        auto arg1 = getBvecFromExpr(e.arg(1), boundVars);
+        auto arg0 = getBvecFromExpr(e.arg(0), boundVars, mustSatisfy, alreadySatisfies);
+        auto arg1 = getBvecFromExpr(e.arg(1), boundVars, mustSatisfy, alreadySatisfies);
         bvec result = bvec_sub(arg0, arg1);
 
         bvecExprCache.insert({(Z3_ast)e, {result, boundVars}});
@@ -902,7 +847,7 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : expre
       {
         if (e.arg(1).is_numeral())
         {
-          auto arg0 = getBvecFromExpr(e.arg(0), boundVars);
+          auto arg0 = getBvecFromExpr(e.arg(0), boundVars, mustSatisfy, alreadySatisfies);
           bvec result = bvec_shlfixed(arg0, getNumeralValue(e.arg(1)), bdd_false());
 
           bvecExprCache.insert({(Z3_ast)e, {result, boundVars}});
@@ -910,8 +855,8 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : expre
         }
         else
         {
-          auto arg0 = getBvecFromExpr(e.arg(0), boundVars);
-          auto arg1 = getBvecFromExpr(e.arg(1), boundVars);
+          auto arg0 = getBvecFromExpr(e.arg(0), boundVars, mustSatisfy, alreadySatisfies);
+          auto arg1 = getBvecFromExpr(e.arg(1), boundVars, mustSatisfy, alreadySatisfies);
           bvec result = bvec_shl(arg0, arg1, bdd_false());
 
           bvecExprCache.insert({(Z3_ast)e, {result, boundVars}});
@@ -920,8 +865,8 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : expre
       }
       else if (functionName == "bvlshr")
       {        
-          auto arg0 = getBvecFromExpr(e.arg(0), boundVars);
-          auto arg1 = getBvecFromExpr(e.arg(1), boundVars);
+          auto arg0 = getBvecFromExpr(e.arg(0), boundVars, mustSatisfy, alreadySatisfies);
+          auto arg1 = getBvecFromExpr(e.arg(1), boundVars, mustSatisfy, alreadySatisfies);
 
           bvec arg0Reversed(arg0.bitnum());
           for (int i = 0; i < arg0.bitnum(); i++)
@@ -946,7 +891,7 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : expre
 
         int totalBits = bitsExtend + f.domain(0).bv_size();
         //cout << "EXTEND " << bitsExtend << " bits " << " to total " << totalBits << " bits " << endl;
-        auto arg0 = getBvecFromExpr(e.arg(0), boundVars);
+        auto arg0 = getBvecFromExpr(e.arg(0), boundVars, mustSatisfy, alreadySatisfies);
         bvec result = bvec_coerce(totalBits, arg0);
 
         return result;
@@ -960,7 +905,7 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : expre
         assert(num > 0);
         for (int i = num-1; i >= 0; i--)
         {
-          auto arg = getBvecFromExpr(e.arg(i), boundVars);          
+          auto arg = getBvecFromExpr(e.arg(i), boundVars, mustSatisfy, alreadySatisfies);
           currentBvec = bvec_map2(currentBvec, 
               bvec_shlfixed(bvec_coerce(newSize, arg), offset, bdd_false()), bdd_xor);
           offset += f.domain(i).bv_size();
@@ -978,7 +923,7 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : expre
 
         int extractBits = bitTo - bitFrom + 1;
 
-        auto arg0 = getBvecFromExpr(e.arg(0), boundVars);
+        auto arg0 = getBvecFromExpr(e.arg(0), boundVars, mustSatisfy, alreadySatisfies);
         if (extractBits < 0)
         {
             cout << e << endl;
@@ -990,15 +935,15 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : expre
       }
       else if (functionName == "bvnot")
       {
-        auto arg0 = getBvecFromExpr(e.arg(0), boundVars);
+        auto arg0 = getBvecFromExpr(e.arg(0), boundVars, mustSatisfy, alreadySatisfies);
         bvec result = bvec_map1(arg0, bdd_not);
 
         return result;
       }
       else if (functionName == "bvor")
       {
-        auto arg0 = getBvecFromExpr(e.arg(0), boundVars);
-        auto arg1 = getBvecFromExpr(e.arg(1), boundVars);
+        auto arg0 = getBvecFromExpr(e.arg(0), boundVars, mustSatisfy, alreadySatisfies);
+        auto arg1 = getBvecFromExpr(e.arg(1), boundVars, mustSatisfy, alreadySatisfies);
         bvec result = bvec_map2(arg0, arg1, bdd_or);
 
         bvecExprCache.insert({(Z3_ast)e, {result, boundVars}});
@@ -1006,8 +951,8 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : expre
       }
       else if (functionName == "bvand")
       {
-        auto arg0 = getBvecFromExpr(e.arg(0), boundVars);
-        auto arg1 = getBvecFromExpr(e.arg(1), boundVars);
+        auto arg0 = getBvecFromExpr(e.arg(0), boundVars, mustSatisfy, alreadySatisfies);
+        auto arg1 = getBvecFromExpr(e.arg(1), boundVars, mustSatisfy, alreadySatisfies);
         bvec result = bvec_map2(arg0, arg1, bdd_and);
 
         bvecExprCache.insert({(Z3_ast)e, {result, boundVars}});
@@ -1015,8 +960,8 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : expre
       }
       else if (functionName == "bvxor")
       {
-        auto arg0 = getBvecFromExpr(e.arg(0), boundVars);
-        auto arg1 = getBvecFromExpr(e.arg(1), boundVars);
+        auto arg0 = getBvecFromExpr(e.arg(0), boundVars, mustSatisfy, alreadySatisfies);
+        auto arg1 = getBvecFromExpr(e.arg(1), boundVars, mustSatisfy, alreadySatisfies);
         bvec result = bvec_map2(arg0, arg1, bdd_xor);
 
         bvecExprCache.insert({(Z3_ast)e, {result, boundVars}});
@@ -1024,15 +969,12 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : expre
       }      
       else if (functionName == "bvmul")
       {          
-          auto arg0 = getBvecFromExpr(e.arg(0), boundVars);
-          auto arg1 = getBvecFromExpr(e.arg(1), boundVars);
+          auto arg0 = getBvecFromExpr(e.arg(0), boundVars, mustSatisfy, alreadySatisfies);
+          auto arg1 = getBvecFromExpr(e.arg(1), boundVars, mustSatisfy, alreadySatisfies);
 
           bvec result;
           if (arg0.bitnum() > 32 || arg1.bitnum() > 32 || (!bvec_isconst(arg0) && !bvec_isconst(arg1)))
           {
-              auto arg0 = getBvecFromExpr(e.arg(0), boundVars);
-              auto arg1 = getBvecFromExpr(e.arg(1), boundVars);
-
               int leftConstantCount = 0;
               int rightConstantCount = 0;
 
@@ -1135,8 +1077,8 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : expre
           bvec div = bvec_false(e.decl().range().bv_size());
           bvec rem = bvec_false(e.decl().range().bv_size());
 
-          auto arg0 = getBvecFromExpr(e.arg(0), boundVars);
-          auto arg1 = getBvecFromExpr(e.arg(1), boundVars);
+          auto arg0 = getBvecFromExpr(e.arg(0), boundVars, mustSatisfy, alreadySatisfies);
+          auto arg1 = getBvecFromExpr(e.arg(1), boundVars, mustSatisfy, alreadySatisfies);
 
           int result = bvec_div(arg0, arg1, div, rem);
           if (result == 0)
@@ -1157,8 +1099,8 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : expre
           bvec div = bvec_false(e.decl().range().bv_size());
           bvec rem = bvec_false(e.decl().range().bv_size());
 
-          auto arg0 = getBvecFromExpr(e.arg(0), boundVars);
-          auto arg1 = getBvecFromExpr(e.arg(1), boundVars);
+          auto arg0 = getBvecFromExpr(e.arg(0), boundVars, mustSatisfy, alreadySatisfies);
+          auto arg1 = getBvecFromExpr(e.arg(1), boundVars, mustSatisfy, alreadySatisfies);
 
           int result = bvec_div(arg0, arg1, div, rem);
           if (result == 0)
@@ -1176,8 +1118,8 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : expre
       }
       else if (functionName == "bvsdiv_i")
       {
-          auto arg0 = getBvecFromExpr(e.arg(0), boundVars);
-          auto arg1 = getBvecFromExpr(e.arg(1), boundVars);
+          auto arg0 = getBvecFromExpr(e.arg(0), boundVars, mustSatisfy, alreadySatisfies);
+          auto arg1 = getBvecFromExpr(e.arg(1), boundVars, mustSatisfy, alreadySatisfies);
 
           int size = e.arg(0).get_sort().bv_size();
 
@@ -1216,8 +1158,8 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : expre
       }
       else if (functionName == "bvsrem_i")
       {
-          auto arg0 = getBvecFromExpr(e.arg(0), boundVars);
-          auto arg1 = getBvecFromExpr(e.arg(1), boundVars);
+          auto arg0 = getBvecFromExpr(e.arg(0), boundVars, mustSatisfy, alreadySatisfies);
+          auto arg1 = getBvecFromExpr(e.arg(1), boundVars, mustSatisfy, alreadySatisfies);
 
           int size = e.arg(0).get_sort().bv_size();
 
@@ -1256,9 +1198,9 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : expre
       }
       else if (functionName == "if")
       {
-          auto arg0 = getBDDFromExpr(e.arg(0), boundVars);
-          auto arg1 = getBvecFromExpr(e.arg(1), boundVars);
-          auto arg2 = getBvecFromExpr(e.arg(2), boundVars);
+          auto arg0 = getBDDFromExpr(e.arg(0), boundVars, mustSatisfy, alreadySatisfies);
+          auto arg1 = getBvecFromExpr(e.arg(1), boundVars, mustSatisfy, alreadySatisfies);
+          auto arg2 = getBvecFromExpr(e.arg(2), boundVars, mustSatisfy, alreadySatisfies);
 
           constIteBdd = arg0;
           bvec result = bvec_map2(arg1, arg2, constThenElse);
@@ -1277,6 +1219,34 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : expre
 
     cout << "bvec else" << e << endl;
     abort();
+  }
+
+  bvec ExprToBDDTransformer::getVariableBvec(const std::string& name, bdd mustSatisfy, bdd alreadySatisfies)
+  {
+      //std::cout << "var: " << ss.str() << std::endl;
+      //std::cout << "must satisfy (nodeCount): " << bdd_nodecount(mustSatisfy) << std::endl;
+      //std::cout << "must satisfy (root): " << mustSatisfy.id() << std::endl;
+
+      bdd mustSatisfySupport = bdd_support(mustSatisfy);
+      bdd alreadySatisfiesSupport = bdd_support(alreadySatisfies);
+      //std::cout << "support (nodeCount): " << bdd_nodecount(support) << std::endl;
+
+      bdd mustSatisfyOtherVars = bdd_and(mustSatisfySupport, bdd_not(varSets[name]));
+      bdd alreadySatisfiesOtherVars = bdd_and(alreadySatisfiesSupport, bdd_not(varSets[name]));
+      //std::cout << "other vars (nodeCount): " << bdd_nodecount(otherVars) << std::endl;
+
+      bdd varMustSatisfy = bdd_exist(mustSatisfy, mustSatisfyOtherVars);
+      bdd varAlreadySatisfies = bdd_exist(alreadySatisfies, alreadySatisfiesOtherVars);
+      //std::cout << "var must satisfy (nodeCount): " << bdd_nodecount(varMustSatisfy) << std::endl;
+      //std::cout << "var must satisfy (root): " << varMustSatisfy.id() << std::endl;
+
+      bvec currentVarBvec = vars[name];
+      for (int i = 0; i < currentVarBvec.bitnum(); i++)
+      {
+          currentVarBvec.set(i, bdd_and(bdd_and(currentVarBvec[i], varMustSatisfy), bdd_not(varAlreadySatisfies)));
+      }
+
+      return currentVarBvec;
   }
 
   unsigned int ExprToBDDTransformer::getNumeralValue(const expr &e)
