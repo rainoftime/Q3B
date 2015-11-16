@@ -212,7 +212,7 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : expre
 
           varIndices[v.first] = vector<int>();
 
-          for (int bit = 0; bit <= bitnum; bit++)
+          for (int bit = 0; bit < bitnum; bit++)
           {
             indices[bit] = currentVar;
             varIndices[v.first].push_back(currentVar);
@@ -1241,9 +1241,15 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : expre
       //std::cout << "var must satisfy (root): " << varMustSatisfy.id() << std::endl;
 
       bvec currentVarBvec = vars[name];
-      for (int i = 0; i < currentVarBvec.bitnum(); i++)
-      {
+      auto currentVarIndices = varIndices[name];
+      int i = currentVarBvec.bitnum() - 1;
+      for (auto index = currentVarIndices.rbegin(); index < currentVarIndices.rend(); index++)
+      //for (int i = 0; i < currentVarBvec.bitnum(); i++)
+      {        
           currentVarBvec.set(i, bdd_and(bdd_and(currentVarBvec[i], varMustSatisfy), bdd_not(varAlreadySatisfies)));
+          varMustSatisfy = bdd_exist(varMustSatisfy, bdd_ithvar(*index));
+          varAlreadySatisfies = bdd_forall(varAlreadySatisfies, bdd_ithvar(*index));
+          i--;
       }
 
       return currentVarBvec;
