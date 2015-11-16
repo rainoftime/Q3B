@@ -1237,19 +1237,23 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : expre
 
       bdd varMustSatisfy = bdd_exist(mustSatisfy, mustSatisfyOtherVars);
       bdd varAlreadySatisfies = bdd_forall(alreadySatisfies, alreadySatisfiesOtherVars);
+
+      if (bdd_nodecount(varMustSatisfy) > 10)
+      {
+          varMustSatisfy = bdd_true();
+      }
+
+      if (bdd_nodecount(varAlreadySatisfies) > 10)
+      {
+          varAlreadySatisfies = bdd_false();
+      }
       //std::cout << "var must satisfy (nodeCount): " << bdd_nodecount(varMustSatisfy) << std::endl;
       //std::cout << "var must satisfy (root): " << varMustSatisfy.id() << std::endl;
 
       bvec currentVarBvec = vars[name];
-      auto currentVarIndices = varIndices[name];
-      int i = currentVarBvec.bitnum() - 1;
-      for (auto index = currentVarIndices.rbegin(); index < currentVarIndices.rend(); index++)
-      //for (int i = 0; i < currentVarBvec.bitnum(); i++)
+      for (int i = 0; i < currentVarBvec.bitnum(); i++)
       {        
           currentVarBvec.set(i, bdd_and(bdd_and(currentVarBvec[i], varMustSatisfy), bdd_not(varAlreadySatisfies)));
-          varMustSatisfy = bdd_exist(varMustSatisfy, bdd_ithvar(*index));
-          varAlreadySatisfies = bdd_forall(varAlreadySatisfies, bdd_ithvar(*index));
-          i--;
       }
 
       return currentVarBvec;
