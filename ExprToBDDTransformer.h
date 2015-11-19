@@ -22,6 +22,34 @@ typedef std::pair<std::string, BoundType> boundVar;
 
 class ExprToBDDTransformer
 {
+  template<class T>
+  struct CacheItem
+  {
+    public:
+      T cachedValue;
+      std::vector<boundVar> boundVars;
+      bdd mustSatisfy;
+      bdd alreadySatisfies;
+
+      CacheItem(T cachedValue) : cachedValue(cachedValue)
+      {
+          boundVars = std::vector<boundVar>();
+          mustSatisfy = bdd_true();
+          alreadySatisfies = bdd_false();
+      }
+
+      CacheItem(T cachedValue, std::vector<boundVar> boundVars) : cachedValue(cachedValue), boundVars(boundVars)
+      {
+          mustSatisfy = bdd_true();
+          alreadySatisfies = bdd_false();
+      }
+
+      CacheItem(T cachedValue, std::vector<boundVar> boundVars, bdd mustSatisfy, bdd alreadySatisfies) :
+          cachedValue(cachedValue), boundVars(boundVars), mustSatisfy(mustSatisfy), alreadySatisfies(alreadySatisfies)
+      {
+      }
+  };
+
   private:
     std::map<std::string, bvec> vars;
     std::map<std::string, bdd> varSets;
@@ -30,8 +58,8 @@ class ExprToBDDTransformer
     std::set<var> constSet;
     std::set<var> boundVarSet;
 
-    std::map<const Z3_ast, std::pair<bdd, std::vector<boundVar>>> bddExprCache;
-    std::map<const Z3_ast, std::pair<bvec, std::vector<boundVar>>> bvecExprCache;
+    std::map<const Z3_ast, CacheItem<bdd>> bddExprCache;
+    std::map<const Z3_ast, CacheItem<bvec>> bvecExprCache;
 
     std::set<Z3_ast> processedVarsCache;
 
