@@ -22,10 +22,3 @@ LIBS += -lz3
 LIBS += /usr/local/lib/libbdd.a
 #LIBS += /media/xjonas/Data/Development/SMT/NightlyZ3/master/z3/build/libz3.a
 #LIBS += -L/usr/local/lib -lbdd
-
-#INCLUDEPATH += -I../../include
-#LIBS += -L../../lib
-#LIBS += -lrt
-
-#QMAKE_CXXFLAGS+= -fopenmp
-#QMAKE_LFLAGS +=  -fopenmp
