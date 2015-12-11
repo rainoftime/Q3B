@@ -12,6 +12,7 @@
 #include <z3++.h>
 #include "ExprSimplifier.h"
 #include "VariableOrderer.h"
+#include "ExprCostComputer.h"
 
 typedef std::pair<std::string, int> var;
 
@@ -63,6 +64,8 @@ class ExprToBDDTransformer
 
     std::set<Z3_ast> processedVarsCache;
 
+    ExprCostComputer costComputer;
+
     bdd m_bdd;
 
     z3::context* context;
@@ -82,8 +85,8 @@ class ExprToBDDTransformer
     bvec getNumeralBvec(const z3::expr&);
     bvec getVariableBvec(const std::string&, bdd, bdd, bool);
 
-    bdd getConjunctionBdd(const std::vector<z3::expr>&, const std::vector<boundVar>&, bdd mustSatisfy = bdd_true(), bdd alreadySatisfies = bdd_false());
-    bdd getDisjunctionBdd(const std::vector<z3::expr>&, const std::vector<boundVar>&, bdd mustSatisfy = bdd_true(), bdd alreadySatisfies = bdd_false());
+    bdd getConjunctionBdd(std::vector<z3::expr>&, const std::vector<boundVar>&, bdd mustSatisfy = bdd_true(), bdd alreadySatisfies = bdd_false());
+    bdd getDisjunctionBdd(std::vector<z3::expr>&, const std::vector<boundVar>&, bdd mustSatisfy = bdd_true(), bdd alreadySatisfies = bdd_false());
 
     int exisentialBitWidth;
     int universalBitWidth;
