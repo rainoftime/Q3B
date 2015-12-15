@@ -5,7 +5,7 @@
 
 using namespace z3;
 
-#define DEBUG true
+#define DEBUG false
 
 expr ExprSimplifier::Simplify(expr expression)
 {    

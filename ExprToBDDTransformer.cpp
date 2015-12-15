@@ -122,7 +122,7 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : costC
   }
 
   void ExprToBDDTransformer::loadVars()
-  {            
+  {
     getVars(expression);
     processedVarsCache.clear();
 
@@ -166,9 +166,9 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : costC
       }
       int i = 0;
       for (auto const &v : group)
-      {
+      {          
           int bitnum = v.second;
-          bvec varBvec = bvec_var(bitnum, offset + i, group.size());
+          bvec varBvec = bvec_var(bitnum, offset + i, group.size());          
           vars[v.first] = varBvec;
 
           int indices[bitnum];
@@ -195,6 +195,10 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : costC
   void ExprToBDDTransformer::loadBDDsFromExpr(expr e)
   {    
     this->expression = e;
+
+    bddExprCache.clear();
+    bvecExprCache.clear();
+
     m_bdd = getBDDFromExpr(e, vector<boundVar>());
   }
 
@@ -268,7 +272,7 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : costC
         {
             result = bdd_or(result, argBdd);
 
-            if (bdd_nodecount(result) == 0 &&result.id() != 0)
+            if (bdd_nodecount(argBdd) == 0 && argBdd.id() != 0)
             {
                 return bdd_true();
             }
@@ -535,11 +539,7 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : costC
           }
       }
 
-      bdd bodyBdd;
-      if (!e.body().is_app() || (e.body().decl().decl_kind() != Z3_OP_OR && e.body().decl().decl_kind() != Z3_OP_AND))
-      {
-        bodyBdd = getBDDFromExpr(e.body(), boundVars, mustSatisfy, alreadySatisfies);
-      }
+      bdd bodyBdd = getBDDFromExpr(e.body(), boundVars, mustSatisfy, alreadySatisfies);
 
       for (int i = boundVariables - 1; i >= 0; i--)
       {
@@ -589,9 +589,15 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : costC
         }
 
         //check correct mustSatisfy and alreadySatisfies
-        //TODO: check only entailment
-        if (correctBoundVars && mustSatisfy == (item->second).mustSatisfy && alreadySatisfies == (item->second).alreadySatisfies)
-        {            
+
+        //is cached mustSatisfy superset of current mustSatisfy?
+        bool correctMustSatisfy = bdd_imp(mustSatisfy, (item->second).mustSatisfy).id() == 1;
+
+        //is cached alreadySatisfies subset of current alreadySatisfies?
+        bool correctAlreadySatisfies = bdd_imp((item->second).alreadySatisfies, alreadySatisfies).id() == 1;
+
+        if (correctBoundVars && correctMustSatisfy && correctAlreadySatisfies)
+        {
             return (item->second).cachedValue;
         }
     }
@@ -696,7 +702,7 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : costC
       return getNumeralBvec(e);
     }
     else if (e.is_const())
-    {
+    {      
       stringstream ss;
       ss << e;
 
@@ -834,7 +840,7 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : costC
         bvec currentBvec = bvec_false(newSize);
         assert(num > 0);
         for (int i = num-1; i >= 0; i--)
-        {
+        {          
           auto arg = getBvecFromExpr(e.arg(i), boundVars, mustSatisfy, alreadySatisfies, propagateVars);
           currentBvec = bvec_map2(currentBvec, 
               bvec_shlfixed(bvec_coerce(newSize, arg), offset, bdd_false()), bdd_xor);
@@ -904,7 +910,7 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : costC
 
           bvec result;
           if (arg0.bitnum() > 32 || arg1.bitnum() > 32 || (!bvec_isconst(arg0) && !bvec_isconst(arg1)))
-          {
+          {              
               int leftConstantCount = 0;
               int rightConstantCount = 0;
 
@@ -945,7 +951,7 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : costC
 
           if (bvec_isconst(arg0))
           {
-            int val = bvec_val(arg0);
+            unsigned int val = bvec_val(arg0);
 
             unsigned int largestDividingTwoPower = 0;
             for (int i = 0; i < 64; i++)
@@ -954,6 +960,10 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : costC
                 {
                     largestDividingTwoPower++;
                     val = val >> 1;
+                }
+                else
+                {
+                    break;
                 }
             }
 
@@ -986,18 +996,18 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : costC
                 if (leftConstantCount < rightConstantCount)
                 {
                   result = bvec_coerce(e.decl().range().bv_size(), bvec_mul_mod(arg1, arg0));
-                  bvecExprCache.insert({(Z3_ast)e, CacheItem<bvec>(result, boundVars, mustSatisfy, alreadySatisfies)});
+                  bvecExprCache.insert({(Z3_ast)e, CacheItem<bvec>(result, boundVars, mustSatisfy, alreadySatisfies)});                  
                   return result;
                 }
                 else
                 {
                   result = bvec_coerce(e.decl().range().bv_size(), bvec_mul_mod(arg0, arg1));
-                  bvecExprCache.insert({(Z3_ast)e, CacheItem<bvec>(result, boundVars, mustSatisfy, alreadySatisfies)});
-                  return result;
-                }
-            }
+                  bvecExprCache.insert({(Z3_ast)e, CacheItem<bvec>(result, boundVars, mustSatisfy, alreadySatisfies)});                  
+                  return result;                  
+                }                
+            }            
 
-            result = bvec_mulfixed(arg1, val);
+            result = bvec_mulfixed(arg1, val);                        
 
             bvecExprCache.insert({(Z3_ast)e, CacheItem<bvec>(result, boundVars, mustSatisfy, alreadySatisfies)});
             return result;
@@ -1155,7 +1165,7 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : costC
   bvec ExprToBDDTransformer::getVariableBvec(const std::string& name, bdd mustSatisfy, bdd alreadySatisfies, bool propagateVars)
   {      
       if (!propagateVars)
-      {
+      {        
         return vars[name];
       }
 
