@@ -8,7 +8,7 @@
 
 #include "HexHelper.h"
 
-#define DEBUG false
+#define DEBUG true
 
 bdd constIteBdd;
 
@@ -43,43 +43,15 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : costC
           return;
       }
 
-      if (e.is_app())
+      if (e.is_const() && !e.is_numeral())
       {
-          func_decl f = e.decl();
-          unsigned num = e.num_args();
+        stringstream ss;
+        ss << e;
 
-          if (num == 0 && f.name() != NULL)
-          {
-            z3::sort s = f.range();
+        string varName = ss.str();
 
-            if (s.is_bv() && !e.is_numeral())
-            {
-              var c = make_pair(f.name().str(), s.bv_size());
-              constSet.insert(c);
-            }
-            else if (s.is_bool())
-            {
-                stringstream ss;
-                ss << e;
-                var c = make_pair(ss.str(), 1);
-                constSet.insert(c);
-            }
-          }
-          else
-          {
-            for (unsigned i = 0; i < num; i++)
-            {
-              getVars(e.arg(i));
-            }
-          }
-      }
-      else if (e.is_const())
-      {
         if (e.get_sort().is_bool())
         {
-            stringstream ss;
-            ss << e;
-
             if (ss.str() == "true" || ss.str() == "false")
             {
               return;
@@ -88,7 +60,22 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : costC
             var c = make_pair(ss.str(), 1);
             constSet.insert(c);
         }
+        else if (e.get_sort().is_bv())
+        {
+            var c = make_pair(ss.str(), e.get_sort().bv_size());
+            constSet.insert(c);
+        }
       }
+      else if (e.is_app())
+      {
+          func_decl f = e.decl();
+          unsigned num = e.num_args();
+
+          for (unsigned i = 0; i < num; i++)
+          {
+            getVars(e.arg(i));
+          }
+      }      
       else if(e.is_quantifier())
       {
         Z3_ast ast = (Z3_ast)e;
@@ -104,12 +91,12 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : costC
             z3::sort current_sort(*context, z3_sort);
 
             if (current_sort.is_bool())
-            {
+            {                
                 var c = make_pair(current_symbol.str(), 1);
                 boundVarSet.insert(c);
             }
             else if (current_sort.is_bv())
-            {
+            {                
                 var c = make_pair(current_symbol.str(), current_sort.bv_size());
                 boundVarSet.insert(c);
             }
@@ -127,6 +114,7 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : costC
     processedVarsCache.clear();
 
     std::cout << "Bound vars: " << boundVarSet.size() << std::endl;
+    std::cout << "Consts: " << constSet.size() << std::endl;
 
     set<var> allVars;
     allVars.insert(constSet.begin(), constSet.end());
@@ -166,7 +154,7 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : costC
       }
       int i = 0;
       for (auto const &v : group)
-      {          
+      {
           int bitnum = v.second;
           bvec varBvec = bvec_var(bitnum, offset + i, group.size());          
           vars[v.first] = varBvec;
@@ -272,7 +260,7 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : costC
         {
             result = bdd_or(result, argBdd);
 
-            if (bdd_nodecount(argBdd) == 0 && argBdd.id() != 0)
+            if (bdd_nodecount(result) == 0 && result.id() != 0)
             {
                 return bdd_true();
             }
@@ -712,6 +700,8 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : costC
           if (exisentialBitWidth > 0)
           {
               int newWidth = min(exisentialBitWidth, bitSize);
+              string varName = ss.str();
+
               bvec var = getVariableBvec(ss.str(), mustSatisfy, alreadySatisfies, propagateVars);
 
               for (int i = newWidth; i < bitSize; i++)
@@ -1187,12 +1177,16 @@ ExprToBDDTransformer::ExprToBDDTransformer(z3::context &ctx, z3::expr e) : costC
       //std::cout << "var must satisfy (nodeCount): " << bdd_nodecount(varMustSatisfy) << std::endl;
       //std::cout << "var must satisfy (root): " << varMustSatisfy.id() << std::endl;
 
+      //cout << "TRYING TO PROPAGATE " << name << endl;
+
       bvec currentVarBvec = vars[name];
       for (int i = 0; i < currentVarBvec.bitnum(); i++)
-      {        
+      {                   
           bdd bitBdd = bdd_and(bdd_and(currentVarBvec[i], varMustSatisfy), bdd_not(varAlreadySatisfies));
           if (bdd_nodecount(bitBdd) == 0)
           {
+            //cout << "KNOWLEDGE PROPAGATION: setting " << i << "th bit of " << name << " to " << bitBdd.id() << endl;
+
             currentVarBvec.set(i, bitBdd);
           }
       }

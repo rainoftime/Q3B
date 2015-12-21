@@ -26,22 +26,22 @@ expr ExprSimplifier::Simplify(expr expression)
       expression = negate(expression);
       expression = applyDer(expression);      
 
-      expression = negate(expression);
-      expression = applyDer(expression);            
-
-      expression = negate(expression);
+      expression = negate(expression);      
       expression = applyDer(expression);
 
-      expression = negate(expression);
+      expression = negate(expression);      
+      expression = applyDer(expression);
+
+      expression = negate(expression);      
       expression = applyDer(expression);
 
       expression = RefinedPushQuantifierIrrelevantSubformulas(expression);
       expression = applyDer(expression);
 
-      expression = negate(expression);
+      expression = negate(expression);      
       expression = applyDer(expression);
 
-      expression = negate(expression);
+      expression = negate(expression);      
       expression = applyDer(expression);
     }
 
@@ -152,18 +152,19 @@ expr ExprSimplifier::PushQuantifierIrrelevantSubformulas(const expr &e)
 
         if (e.body().is_app())
         {
-            func_decl innerDecl = e.body().decl();
+            expr body = PushNegations(e.body());
+            func_decl innerDecl = body.decl();
 
             expr_vector bodyVector(*context);
             expr_vector replacementVector(*context);
 
             if (innerDecl.decl_kind() == Z3_OP_AND || innerDecl.decl_kind() == Z3_OP_OR)
             {
-                int numInnerArgs = e.body().num_args();
-                for (int i = 0; i < numInnerArgs; i++)
+                unsigned int numInnerArgs = body.num_args();
+                for (unsigned int i = 0; i < numInnerArgs; i++)
                 {
-                    expr arg = e.body().arg(i);
-                    bool relevant = isRelevant(arg, numBound, 0);
+                    expr arg = body.arg(i);
+                    bool relevant = isRelevant(arg, numBound,  0);
 
                     if (!relevant)
                     {
@@ -175,20 +176,27 @@ expr ExprSimplifier::PushQuantifierIrrelevantSubformulas(const expr &e)
                     }
                 }
 
-                expr bodyExpr = innerDecl(bodyVector);
-                Z3_ast quantAst = Z3_mk_quantifier(
-                            *context,
-                            Z3_is_quantifier_forall(*context, ast),
-                            Z3_get_quantifier_weight(*context, ast),
-                            0,
-                            {},
-                            numBound,
-                            sorts,
-                            decl_names,
-                            (Z3_ast)PushQuantifierIrrelevantSubformulas(bodyExpr));
+                //std::cout << "Total " << bodyVector.size() << std::endl;
+                //std::cout << "Relevant " << numInnerArgs << std::endl;
+                if (bodyVector.size() != numInnerArgs)
+                {
+                    //std::cout << "Refining expression" << std::endl;
+                    std::cout << e << std::endl;
+                    expr bodyExpr = innerDecl(bodyVector);
+                    Z3_ast quantAst = Z3_mk_quantifier(
+                                *context,
+                                Z3_is_quantifier_forall(*context, ast),
+                                Z3_get_quantifier_weight(*context, ast),
+                                0,
+                                {},
+                                numBound,
+                                sorts,
+                                decl_names,
+                                (Z3_ast)PushQuantifierIrrelevantSubformulas(bodyExpr));
 
-                replacementVector.push_back(to_expr(*context, quantAst));
-                return innerDecl(replacementVector);
+                    replacementVector.push_back(to_expr(*context, quantAst));
+                    return innerDecl(replacementVector);
+                }
             }
         }
 
@@ -248,18 +256,19 @@ expr ExprSimplifier::RefinedPushQuantifierIrrelevantSubformulas(const expr &e)
 
         if (e.body().is_app())
         {
-            func_decl innerDecl = e.body().decl();
+            expr body = PushNegations(e.body());
+            func_decl innerDecl = body.decl();
 
             expr_vector bodyVector(*context);
             expr_vector replacementVector(*context);
 
             if (innerDecl.decl_kind() == Z3_OP_AND || innerDecl.decl_kind() == Z3_OP_OR)
             {
-                int numInnerArgs = e.body().num_args();
+                int numInnerArgs = body.num_args();
 
                 for (int i = 0; i < numInnerArgs; i++)
                 {
-                    expr arg = e.body().arg(i);
+                    expr arg = body.arg(i);
                     bool relevant = isRelevant(arg, 1, 0);
 
                     if (!relevant)
@@ -513,7 +522,7 @@ expr ExprSimplifier::PushNegations(const expr &e)
             return dec(arguments);
         }
         else
-        {
+        {                        
             expr notBody = e.arg(0);
             if (notBody.is_app())
             {
@@ -522,7 +531,7 @@ expr ExprSimplifier::PushNegations(const expr &e)
 
                 if (innerDecl.decl_kind() == Z3_OP_NOT)
                 {
-                    return notBody.arg(0);
+                    return PushNegations(notBody.arg(0));
                 }
                 else if (innerDecl.decl_kind() == Z3_OP_AND)
                 {
