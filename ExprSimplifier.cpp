@@ -28,7 +28,7 @@ expr ExprSimplifier::Simplify(expr expression)
     {
 	    if (expression.is_const())
 	    {
-		    return expression;
+		    return expression.simplify();
 	    }
 		
 		i++;
@@ -37,9 +37,12 @@ expr ExprSimplifier::Simplify(expr expression)
 		clearCaches();
 
 		//std::cout << "Quantifier irrelevant start" << std::endl;
-		//expression = PushQuantifierIrrelevantSubformulas(expression);
 		//std::cout << "Apply constant start" << std::endl;
-		expression = ApplyConstantEqualities(expression);
+		
+		//std::cout << "Before " << expression << std::endl;
+		expression = ApplyConstantEqualities(expression.simplify());
+		//expression = PushQuantifierIrrelevantSubformulas(expression);
+		//std::cout << "After " << expression << std::endl;
 
 		//std::cout << "Negate start" << std::endl;
 		expression = negate(expression);
@@ -88,49 +91,55 @@ expr ExprSimplifier::Simplify(expr expression)
     return expression;
 }
 
-expr ExprSimplifier::ApplyConstantEqualities(const expr &e)
+expr ExprSimplifier::ApplyConstantEqualities(expr e)
 { 
     if (e.is_app())
     {
-        func_decl dec = e.decl();
-
-        if (dec.name().str() == "and")
+		func_decl dec = e.decl();
+        if (dec.decl_kind() == Z3_OP_AND)
         {
-            int argsCount = e.num_args();
+			expr variable(*context);
+			expr replacement(*context);
 
-            for (int i=0; i < argsCount; i++)
+			int hasSimplified = true;
+			while (hasSimplified && e.is_app() && e.decl().decl_kind() == Z3_OP_AND)
             {
-                expr variable(*context);
-                expr replacement(*context);
-                if (getSubstitutableEquality(e.arg(i), &variable, &replacement))
-                {
-                    Z3_ast args [argsCount-1];
+				int argsCount = e.num_args();
 
-                    for (int j=0; j < argsCount-1; j++)
-                    {
-                        if (j < i)
-                        {
-                            args[j] = (Z3_ast)e.arg(j);
-                        }
-                        else
-                        {
-                            args[j] = (Z3_ast)e.arg(j+1);
-                        }
-                    }                   
-
-                    expr withoutSubstitutedEquality = to_expr(*context, Z3_mk_and(*context, argsCount - 1, args));
-
-                    expr_vector src(*context);
+				bool foundSubstitutable = false;
+				expr_vector newArgs(*context);
+				for (int i=0; i < argsCount; i++)
+				{
+					//auto arg = ApplyConstantEqualities(e.arg(i));
+                    auto arg = e.arg(i);
+					
+					if (foundSubstitutable || !getSubstitutableEquality(arg, &variable, &replacement))
+					{						
+						newArgs.push_back(arg);
+					}
+					else
+					{
+						foundSubstitutable = true;
+					}
+				}
+				
+				if (foundSubstitutable)
+				{
+					expr withoutSubstitutedEquality = dec(newArgs);
+					
+					expr_vector src(*context);
                     expr_vector dst(*context);
 
                     src.push_back(variable);
                     dst.push_back(replacement);
 
-                    expr substituted = withoutSubstitutedEquality.substitute(src, dst);
-
-                    return ApplyConstantEqualities(substituted);
-                }
-            }
+					e = withoutSubstitutedEquality.substitute(src, dst).simplify();
+				}
+				else
+				{
+					hasSimplified = false;
+				}
+			}
 
             return e;
         }
@@ -203,7 +212,7 @@ expr ExprSimplifier::PushQuantifierIrrelevantSubformulas(const expr &e)
                         replacementVector.push_back(decreaseDeBruijnIndices(arg, numBound, -1));
                     }
                     else
-                    {
+                    {						
                         bodyVector.push_back(arg);
                     }
                 }

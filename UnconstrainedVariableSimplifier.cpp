@@ -578,6 +578,17 @@ z3::expr UnconstrainedVariableSimplifier::simplifyOnce(const expr e, std::vector
 				{
 					continue;
 				}
+				else if (decl_kind == Z3_OP_NOT)
+				{
+					if (argument_kind == Z3_OP_TRUE)
+					{
+						return context->bool_val(false);
+					}
+					else
+					{
+						return context->bool_val(true);
+					}
+				}
 				
 			}
 			

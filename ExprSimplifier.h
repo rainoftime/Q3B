@@ -18,7 +18,7 @@ public:
     }
 
     z3::expr Simplify (z3::expr);
-    z3::expr ApplyConstantEqualities(const z3::expr&);
+    z3::expr ApplyConstantEqualities(z3::expr);
     z3::expr PushQuantifierIrrelevantSubformulas(const z3::expr&);
     z3::expr RefinedPushQuantifierIrrelevantSubformulas(const z3::expr&);
     z3::expr negate(const z3::expr&);
