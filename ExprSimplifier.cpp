@@ -16,11 +16,6 @@ expr ExprSimplifier::Simplify(expr expression)
 {        
     unsigned oldHash = 0;  
 
-    //expression = expression.simplify();
-    //expression = ApplyConstantEqualities(expression);    
-
-    //return expression.simplify();
-
     if (DEBUG)
     {
 		std::cout << std::endl << std::endl << "input:" << std::endl;
@@ -29,11 +24,6 @@ expr ExprSimplifier::Simplify(expr expression)
 
     int i = 0;
 
-    if (propagateUnconstrained)
-    {
-	    expression = CanonizeBoundVariables(expression);
-    }
-	
     while (oldHash != expression.hash())
     {
 	    if (expression.is_const())
@@ -47,19 +37,9 @@ expr ExprSimplifier::Simplify(expr expression)
 		clearCaches();
 
 		//std::cout << "Quantifier irrelevant start" << std::endl;
-		expression = PushQuantifierIrrelevantSubformulas(expression);
+		//expression = PushQuantifierIrrelevantSubformulas(expression);
 		//std::cout << "Apply constant start" << std::endl;
 		expression = ApplyConstantEqualities(expression);
-
-		//std::cout << "Negate start" << std::endl;
-		expression = negate(expression);
-		//std::cout << "Der start" << std::endl;      
-		expression = applyDer(expression);      
-
-		//std::cout << "Negate start" << std::endl;
-		expression = negate(expression);
-		//std::cout << "Der start" << std::endl;      
-		expression = applyDer(expression);                  
 
 		//std::cout << "Negate start" << std::endl;
 		expression = negate(expression);
@@ -71,35 +51,24 @@ expr ExprSimplifier::Simplify(expr expression)
 		//std::cout << "Der start" << std::endl;      
 		expression = applyDer(expression);
 
-		clearCaches();      
-
-		//std::cout << "Refined quantifiers start" << std::endl;
-		expression = RefinedPushQuantifierIrrelevantSubformulas(expression);
-		//std::cout << "Der start" << std::endl;      
-		expression = applyDer(expression);
-
-		//std::cout << "Negate start" << std::endl;
-		expression = negate(expression);
-		//std::cout << "Der start" << std::endl;      
-		expression = applyDer(expression);
-
-		//std::cout << "Negate start" << std::endl;      
-		expression = negate(expression);
-		//std::cout << "Der start" << std::endl;      
-		expression = applyDer(expression);
-      
 		if (propagateUnconstrained)
 		{
 			pushNegationsCache.clear();
 			expression = expression.simplify();
 			expression = PushNegations(expression);
-			
-			UnconstrainedVariableSimplifier unconstrainedSimplifier(*context, expression);        
 
+			//std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
+			UnconstrainedVariableSimplifier unconstrainedSimplifier(*context, expression);        
+			//std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
+			//std::cout << "Unconstrained simplifier = " << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() << "ms" << std::endl;
+
+			//begin = std::chrono::steady_clock::now();
 			unconstrainedSimplifier.SimplifyIte();
+			//end = std::chrono::steady_clock::now();
+			//std::cout << "Unconstrained simplifyIte = " << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() << "ms" << std::endl;
 			expression = unconstrainedSimplifier.GetExpr();
 		}
-    }
+    }   
 
     if (DEBUG)
     {
@@ -107,10 +76,7 @@ expr ExprSimplifier::Simplify(expr expression)
         unconstrainedSimplifier.PrintUnconstrained();
     }
 
-    pushNegationsCache.clear();
     expression = expression.simplify();
-    expression = PushNegations(expression);
-    //expression = UnflattenAddition(expression);
 
     if (DEBUG)
     {
@@ -118,9 +84,7 @@ expr ExprSimplifier::Simplify(expr expression)
 		std::cout << expression << std::endl;
     }
 
-    context->check_error();
     clearCaches();
-
     return expression;
 }
 
@@ -1091,10 +1055,10 @@ z3::expr ExprSimplifier::applyDer(const z3::expr &expression)
 		z3::tactic(*context, "simplify") &
 		z3::tactic(*context, "distribute-forall") &
 		z3::tactic(*context, "simplify");
-	z3::tactic(*context, "macro-finder") &
-		z3::tactic(*context, "simplify") &
-		z3::tactic(*context, "quasi-macros") &
-		z3::tactic(*context, "simplify");
+    //	z3::tactic(*context, "macro-finder") &
+    //z3::tactic(*context, "simplify") &
+		  //		z3::tactic(*context, "quasi-macros") &
+    //		z3::tactic(*context, "simplify");
 
     z3::apply_result result = derTactic(g);
 

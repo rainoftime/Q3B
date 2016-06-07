@@ -2,6 +2,7 @@
 #define UNCONSTRAINEDVARIABLESIMPLIFIER_H
 
 #include "z3++.h"
+#include <unordered_map>
 #include <map>
 #include <vector>
 #include <string>
@@ -16,7 +17,7 @@ public:
     {
       this->context = &ctx;
 
-      variableCounts = countVariableOccurences(expression, std::vector<std::string>()).first;
+      countVariableOccurences(expression, std::vector<std::string>());
     }
 
     void PrintUnconstrained()
@@ -49,9 +50,9 @@ private:
     z3::context* context;
     z3::expr expression;
 
-    std::map<const Z3_ast, std::pair<std::map<std::string, int>, std::vector<std::string>>> subformulaVariableCounts;
-    std::map<const Z3_ast, int> subformulaMaxDeBruijnIndices;
-    std::map<std::string, int> variableCounts;
+    //std::map<const Z3_ast, std::pair<std::unordered_map<std::string, int>, std::vector<std::string>>> subformulaVariableCounts;
+    std::unordered_map<const z3::expr*, int> subformulaMaxDeBruijnIndices;
+    std::unordered_map<std::string, int> variableCounts;
 
     typedef std::pair<std::string, BoundType> boundVar;
     typedef std::map<const Z3_ast, std::pair<z3::expr, const std::vector<boundVar>>> cacheMapType;
@@ -59,13 +60,14 @@ private:
     cacheMapType trueSimplificationCache;
     cacheMapType falseSimplificationCache;
 
-    std::pair<std::map<std::string, int>, int> countVariableOccurences(z3::expr, std::vector<std::string>);
+    int countVariableOccurences(z3::expr, std::vector<std::string>);
+	void addVariableOccurence(const std::string&);
 
-    z3::expr simplifyOnce(z3::expr, std::vector<std::pair<std::string, BoundType>>, bool);
-    bool isUnconstrained(z3::expr, const std::vector<std::pair<std::string, BoundType>>&);
-    bool isVar(z3::expr);
-    bool isBefore(z3::expr, z3::expr);
-    BoundType getBoundType(z3::expr, const std::vector<std::pair<std::string, BoundType>>&);
+    z3::expr simplifyOnce(const z3::expr, std::vector<std::pair<std::string, BoundType>>, bool);
+    bool isUnconstrained(const z3::expr, const std::vector<std::pair<std::string, BoundType>>&);
+    bool isVar(const z3::expr&);
+    bool isBefore(const z3::expr&, const z3::expr&);
+    BoundType getBoundType(const z3::expr&, const std::vector<std::pair<std::string, BoundType>>&);
 
 	int getNumberOfLeadingZeroes(const z3::expr&);
 };
