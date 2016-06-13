@@ -65,20 +65,20 @@ expr ExprSimplifier::Simplify(expr expression)
 			std::cout << "Unconstrained simplifier = " << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() << " μs" << std::endl;
 
 			begin = std::chrono::steady_clock::now();
-#endif			
+#endif
 			unconstrainedSimplifier.SimplifyIte();
 #ifdef TIME
 			end = std::chrono::steady_clock::now();
 			std::cout << "Unconstrained simplifyIte = " << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() << " μs" << std::endl;
-#endif			
+#endif
 			expression = unconstrainedSimplifier.GetExpr().simplify();
 		}
 
 	    if (expression.is_const())
 	    {
 		    return expression;
-	    }
-		
+	    }		
+	
 		expression = negate(expression);
 		expression = applyDer(expression);    
 		expression = negate(expression);

@@ -13,11 +13,54 @@ void UnconstrainedVariableSimplifier::addVariableOccurence(const string& name)
 	auto varCount = variableCounts.find(name);
 	if (varCount == variableCounts.end())
 	{
-		variableCounts[name] = 1;
+		bitCountMap map;
+		variableCounts[name] = {1, map};
 	}
 	else
 	{
-		variableCounts[name] = min(varCount->second + 1, 2);			   
+		if ((varCount->second.first == 2))
+		{
+			return;
+		}
+		
+		variableCounts[name] = {min((varCount->second).first + 1, 2), (varCount->second).second};			   
+	}
+}
+
+void UnconstrainedVariableSimplifier::addIntervalVariableOccurence(const string& name, int from, int to)
+{
+	auto varCount = variableCounts.find(name);
+	if (varCount == variableCounts.end())
+	{
+		bitCountMap map;
+		for (int i = from; i <= to; i++)
+		{
+			map[i] = 1;
+		}
+		variableCounts[name] = {0, map};
+	}
+	else
+	{	
+		bitCountMap map = (varCount->second).second;
+
+		if ((varCount->second).first == 2)
+		{
+			return;
+		}
+	   
+		for (int i = from; i <= to; i++)
+		{
+			int newVal = min(map[i] + 1, 2);
+			
+			if (newVal == 2)
+			{
+				variableCounts[name] = {2, map};
+				return;
+			}
+				
+			map[i] = newVal;
+		}
+		variableCounts[name] = {(varCount->second).first, map};	   
 	}
 }
 
@@ -57,6 +100,28 @@ int UnconstrainedVariableSimplifier::countVariableOccurences(z3::expr e, vector<
 
 		int maxDeBruijnIndex = -1;
 
+		if (f.decl_kind() == Z3_OP_EXTRACT && (e.is_var() || (e.arg(0).is_const() && !e.arg(0).is_numeral())))
+		{
+			Z3_func_decl z3decl = (Z3_func_decl)e.decl();
+			int bitTo = Z3_get_decl_int_parameter(*context, z3decl, 0);
+			int bitFrom = Z3_get_decl_int_parameter(*context, z3decl, 1);
+
+			if (e.is_var())
+			{
+				Z3_ast ast = (Z3_ast)e.arg(0);
+				int deBruijnIndex = Z3_get_index_value(*context, ast);
+				addIntervalVariableOccurence(boundVars[boundVars.size() - deBruijnIndex - 1], bitFrom, bitTo);
+				return deBruijnIndex;
+			}
+			else
+			{
+				auto name = e.arg(0).decl().name().str();
+				addIntervalVariableOccurence(name, bitFrom, bitTo);
+				subformulaMaxDeBruijnIndices.insert({&e, -1});
+				return -1;
+			}
+		}
+		
 		if (num != 0)
 		{
 			for (unsigned i = 0; i < num; i++)
@@ -683,7 +748,7 @@ bool UnconstrainedVariableSimplifier::isUnconstrained(const expr e, const vector
     {
         Z3_ast ast = (Z3_ast)e;
         int deBruijnIndex = Z3_get_index_value(*context, ast);
-        return (variableCounts[boundVars[boundVars.size() - deBruijnIndex - 1].first] == 1);
+        return (variableCounts[boundVars[boundVars.size() - deBruijnIndex - 1].first].first == 1);
     }
     else if (e.is_app())
     {
@@ -692,11 +757,25 @@ bool UnconstrainedVariableSimplifier::isUnconstrained(const expr e, const vector
 
       if (num == 0 && f.name() != NULL)
       {
-	      return variableCounts[f.name().str()] == 1;			
+		  auto counts = variableCounts[f.name().str()];
+	      return counts.first == 1
+			  && counts.second.size() == 0;			
       }
-      else if (f.decl_kind() == Z3_OP_EXTRACT)
+      else if (f.decl_kind() == Z3_OP_EXTRACT && e.arg(0).is_app() && e.arg(0).num_args() == 0 && !e.arg(0).is_numeral())
       {
-	      return isUnconstrained(e.arg(0), boundVars);
+		  Z3_func_decl z3decl = (Z3_func_decl)e.decl();
+		  int bitTo = Z3_get_decl_int_parameter(*context, z3decl, 0);
+		  int bitFrom = Z3_get_decl_int_parameter(*context, z3decl, 1);
+
+		  auto counts = variableCounts[e.arg(0).decl().name().str()];
+		  
+		  int maxBit = 0;
+		  for (int i = bitFrom; i <= bitTo; i++)
+		  {
+			  maxBit = max(maxBit, counts.second[i]);
+		  }
+		  
+	      return (counts.first + maxBit) <= 1;
       }
     }
 

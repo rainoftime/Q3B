@@ -26,13 +26,22 @@ public:
 		
         for (auto &item : variableCounts)
         {
-            std::cout << "var " << item.first << " - " << item.second << " times" << std::endl;
+            std::cout << "var " << item.first << " - " << item.second.first << " times" << std::endl;
 
-            if (item.second == 1)
+            if (item.second.first == 1)
             {
                 allConstrained = false;
                 //std::cout << "Unconstrained variable: " << item.first << std::endl;
             }
+			
+			if (item.second.second.size() != 0)
+			{
+				for (const auto &intervalItem : item.second.second)
+				{
+					std::cout << "interval var " << item.first << "[" << intervalItem.first << "] -" <<
+						 intervalItem.second << " times" << std::endl;
+				}			
+			}
         }
         if (allConstrained) std::cout << "All variables constrained" << std::endl;
     }
@@ -52,7 +61,9 @@ private:
 
     //std::map<const Z3_ast, std::pair<std::unordered_map<std::string, int>, std::vector<std::string>>> subformulaVariableCounts;
     std::unordered_map<const z3::expr*, int> subformulaMaxDeBruijnIndices;
-    std::unordered_map<std::string, int> variableCounts;
+
+	typedef std::map<int, int> bitCountMap;
+    std::unordered_map<std::string, std::pair<int, bitCountMap>> variableCounts;
 
     typedef std::pair<std::string, BoundType> boundVar;
     typedef std::map<const Z3_ast, std::pair<z3::expr, const std::vector<boundVar>>> cacheMapType;
@@ -62,6 +73,7 @@ private:
 
     int countVariableOccurences(z3::expr, std::vector<std::string>);
 	void addVariableOccurence(const std::string&);
+	void addIntervalVariableOccurence(const std::string&, int, int);
 
     z3::expr simplifyOnce(const z3::expr, std::vector<std::pair<std::string, BoundType>>, bool);
     bool isUnconstrained(const z3::expr, const std::vector<std::pair<std::string, BoundType>>&);
