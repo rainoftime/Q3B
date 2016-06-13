@@ -17,7 +17,7 @@ void UnconstrainedVariableSimplifier::addVariableOccurence(const string& name)
 	}
 	else
 	{
-		variableCounts[name] = max(varCount->second + 1, 2);			   
+		variableCounts[name] = min(varCount->second + 1, 2);			   
 	}
 }
 
@@ -47,6 +47,7 @@ int UnconstrainedVariableSimplifier::countVariableOccurences(z3::expr e, vector<
 			addVariableOccurence(name);
 		}
 
+		subformulaMaxDeBruijnIndices.insert({&e, -1});
 		return -1;
 	}
 	else if (e.is_app())
@@ -116,6 +117,10 @@ void UnconstrainedVariableSimplifier::SimplifyIte()
 		oldHash = expression.hash();
 
 		SimplifyOnce();
+		if (i != 0)
+		{
+			countVariableOccurences(expression, std::vector<std::string>());
+		}
 		expression = simplifier.PushNegations(expression);
       
 		i++;
@@ -719,7 +724,7 @@ bool UnconstrainedVariableSimplifier::isVar(const expr &e)
 }
 
 bool UnconstrainedVariableSimplifier::isBefore(const expr &a, const expr &b)
-{
+{	
     return (subformulaMaxDeBruijnIndices[&a] >= subformulaMaxDeBruijnIndices[&b]) || (subformulaMaxDeBruijnIndices[&a] == -1);
 }
 
