@@ -19,7 +19,6 @@ public:
 
     z3::expr Simplify (z3::expr);
     z3::expr ApplyConstantEqualities(z3::expr);
-    z3::expr ApplyAcyclicConstantEqualities(z3::expr);	
     z3::expr PushQuantifierIrrelevantSubformulas(const z3::expr&);
     z3::expr RefinedPushQuantifierIrrelevantSubformulas(const z3::expr&);
     z3::expr negate(const z3::expr&);
@@ -39,12 +38,7 @@ private:
     void clearCaches();
 
     z3::context* context;
-    template <bool acyclic=false>
-	bool getSubstitutableEquality(const z3::expr&, z3::expr*, z3::expr*);
-
-	z3::expr ApplyValueAssignments(z3::expr);
-	z3::expr ApplyVariableRenamings(z3::expr);
-	
+    bool getSubstitutableEquality(const z3::expr&, z3::expr*, z3::expr*);
     z3::expr decreaseDeBruijnIndices(const z3::expr&, int, int);
     bool isRelevant(const z3::expr&, int, int);
     z3::expr mk_or(z3::expr_vector&);

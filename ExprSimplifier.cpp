@@ -11,7 +11,6 @@ using namespace std::chrono;
 using namespace z3;
 
 #define DEBUG false
-//#define TIME
 
 expr ExprSimplifier::Simplify(expr expression)
 {        
@@ -24,7 +23,7 @@ expr ExprSimplifier::Simplify(expr expression)
     }
 
     int i = 0;
-	
+
     while (oldHash != expression.hash())
     {
 	    if (expression.is_const())
@@ -39,31 +38,34 @@ expr ExprSimplifier::Simplify(expr expression)
 
 		//std::cout << "Quantifier irrelevant start" << std::endl;
 		//std::cout << "Apply constant start" << std::endl;
-
-#ifdef TIME		
-		std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
-#endif
-		expression = ApplyConstantEqualities(expression.simplify());
-
-#ifdef TIME		
-		std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
-		std::cout << "Apply constant simplifier = " << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() << " μs" << std::endl;
-#endif
 		
+		//std::cout << "Before " << expression << std::endl;
+		expression = ApplyConstantEqualities(expression.simplify());
+		//expression = PushQuantifierIrrelevantSubformulas(expression);
+		//std::cout << "After " << expression << std::endl;
+
+		//std::cout << "Negate start" << std::endl;
+		expression = negate(expression);
+		//std::cout << "Der start" << std::endl;      
+		expression = applyDer(expression);    
+
+		//std::cout << "Negate start" << std::endl;
+		expression = negate(expression);
+		//std::cout << "Der start" << std::endl;      
+		expression = applyDer(expression);
+
 		if (propagateUnconstrained)
 		{
 			pushNegationsCache.clear();
 			expression = expression.simplify();
 			expression = PushNegations(expression);
 
-#ifdef TIME
-			std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
-#endif
-			UnconstrainedVariableSimplifier unconstrainedSimplifier(*context, expression);
-#ifdef TIME
-			std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
-			std::cout << "Unconstrained simplifier = " << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() << " μs" << std::endl;
+			//std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
+			UnconstrainedVariableSimplifier unconstrainedSimplifier(*context, expression);        
+			//std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
+			//std::cout << "Unconstrained simplifier = " << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() << "ms" << std::endl;
 
+<<<<<<< HEAD
 			begin = std::chrono::steady_clock::now();
 #endif
 			unconstrainedSimplifier.SimplifyIte();
@@ -83,6 +85,14 @@ expr ExprSimplifier::Simplify(expr expression)
 		expression = applyDer(expression);    
 		expression = negate(expression);
 		expression = applyDer(expression);		
+=======
+			//begin = std::chrono::steady_clock::now();
+			unconstrainedSimplifier.SimplifyIte();
+			//end = std::chrono::steady_clock::now();
+			//std::cout << "Unconstrained simplifyIte = " << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() << "ms" << std::endl;
+			expression = unconstrainedSimplifier.GetExpr();
+		}
+>>>>>>> parent of e6a849e... Add faster application of numeral constant values
     }   
 
     if (DEBUG)
@@ -103,59 +113,8 @@ expr ExprSimplifier::Simplify(expr expression)
     return expression;
 }
 
-expr ExprSimplifier::ApplyValueAssignments(expr e)
-{
-	if (e.is_app())
-    {
-		func_decl dec = e.decl();
-        if (dec.decl_kind() == Z3_OP_AND)
-        {
-			expr variable(*context);
-			expr replacement(*context);
-
-			unsigned oldHash = 0;  
-			
-			while (oldHash != e.hash() && e.is_app() && e.decl().decl_kind() == Z3_OP_AND)
-			{
-				oldHash = e.hash();
-
-				expr_vector variables(*context);
-				expr_vector values(*context);			
-				expr_vector args(*context);
-				
-				int argsCount = e.num_args();
-				for (int i=0; i < argsCount; i++)
-				{
-					auto arg = e.arg(i);
-					
-					if (getSubstitutableEquality(arg, &variable, &replacement) && replacement.is_numeral())
-					{						
-						variables.push_back(variable);
-						values.push_back(replacement);
-					}
-					else
-					{
-						args.push_back(arg);
-					}
-				}
-
-				expr_vector src(*context);
-				expr_vector dst(*context);
-
-				src.push_back(variable);
-				dst.push_back(replacement);
-
-				e = dec(args).substitute(variables, values).simplify();
-			}
-		}
-	}
-
-	return e;
-}
-
-
 expr ExprSimplifier::ApplyConstantEqualities(expr e)
-{
+{ 
     if (e.is_app())
     {
 		func_decl dec = e.decl();
@@ -163,10 +122,8 @@ expr ExprSimplifier::ApplyConstantEqualities(expr e)
         {
 			expr variable(*context);
 			expr replacement(*context);
-						
-			e = ApplyValueAssignments(e);			
-			
-			int hasSimplified = true;						
+
+			int hasSimplified = true;
 			while (hasSimplified && e.is_app() && e.decl().decl_kind() == Z3_OP_AND)
             {
 				int argsCount = e.num_args();
@@ -204,59 +161,6 @@ expr ExprSimplifier::ApplyConstantEqualities(expr e)
 				{
 					hasSimplified = false;
 				}
-			}
-
-            return e;
-        }
-    }
-
-    return e;
-}
-
-expr ExprSimplifier::ApplyAcyclicConstantEqualities(expr e)
-{ 
-    if (e.is_app())
-    {
-		func_decl dec = e.decl();
-        if (dec.decl_kind() == Z3_OP_AND)
-        {
-			expr variable(*context);
-			expr replacement(*context);
-
-			expr_vector newArgs(*context);
-			expr_vector src(*context);
-			expr_vector dst(*context);
-			
-			int argsCount = e.num_args();
-			for (int i=0; i < argsCount; i++)
-			{
-				//auto arg = ApplyConstantEqualities(e.arg(i));
-				auto arg = e.arg(i);
-				
-				if (getSubstitutableEquality<true>(arg, &variable, &replacement))
-				{						
-					src.push_back(variable);
-					dst.push_back(replacement);
-				}
-				else
-				{
-					newArgs.push_back(arg);
-				}
-			}
-
-			e = dec(newArgs);
-			
-			unsigned oldHash = 0;  
-	
-			while (oldHash != e.hash())
-			{
-				if (e.is_const())
-				{
-					return e.simplify();
-				}
-		
-				oldHash = e.hash();
-				e = e.substitute(src, dst).simplify();
 			}
 
             return e;
@@ -522,7 +426,6 @@ expr ExprSimplifier::RefinedPushQuantifierIrrelevantSubformulas(const expr &e)
     }
 }
 
-template <bool acyclic>
 bool ExprSimplifier::getSubstitutableEquality(const expr &e, expr *variable, expr *replacement)
 {
     if (e.is_app())
@@ -533,58 +436,33 @@ bool ExprSimplifier::getSubstitutableEquality(const expr &e, expr *variable, exp
         {
             expr firstArg = e.arg(0);
             if (firstArg.is_app() && firstArg.num_args() == 0 && firstArg.decl().name() != NULL && firstArg.is_bv() && !firstArg.is_numeral())
-			{
-				if (acyclic)
+            {
+				std::stringstream variableString;
+				variableString << firstArg;
+				std::stringstream replacementString;
+				replacementString << e.arg(1);
+
+				if (replacementString.str().find(variableString.str()) == std::string::npos)
 				{
 					*variable = firstArg;
 					*replacement = e.arg(1);
 					return true;
-				}
-				else
-				{
-					if ((e.arg(0).is_const() || e.arg(0).is_var()) && (e.arg(1).is_const() || e.arg(1).is_var()))
-					{
-						*variable = firstArg;
-						*replacement = e.arg(1);
-						return true;
-					}
-
-					std::stringstream variableString;
-					variableString << firstArg;
-					std::stringstream replacementString;
-					replacementString << e.arg(1);
-
-					if (replacementString.str().find(variableString.str()) == std::string::npos)
-					{
-						*variable = firstArg;
-						*replacement = e.arg(1);
-						return true;
-					}
 				}
             }
 
 			expr secondArg = e.arg(1);
 			if (secondArg.is_app() && secondArg.num_args() == 0 && secondArg.decl().name() != NULL && secondArg.is_bv() && !secondArg.is_numeral())
             {
-				if (acyclic)
+				std::stringstream variableString;
+				variableString << secondArg;
+				std::stringstream replacementString;
+				replacementString << e.arg(0);
+
+				if (replacementString.str().find(variableString.str()) == std::string::npos)
 				{
 					*variable = secondArg;
 					*replacement = e.arg(0);
 					return true;
-				}
-				else
-				{
-					std::stringstream variableString;
-					variableString << e.arg(0);
-					std::stringstream replacementString;
-					replacementString << secondArg;
-
-					if (replacementString.str().find(variableString.str()) == std::string::npos)
-					{
-						*variable = secondArg;
-						*replacement = e.arg(0);
-						return true;
-					}
 				}
             }
         }
